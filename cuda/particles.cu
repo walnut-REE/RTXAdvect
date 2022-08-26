@@ -183,7 +183,7 @@ namespace advect {
                 vec4d vel;
 
                 vfile >> pos.x >> pos.y >> pos.z >> vel.x >> vel.y >> vel.z;
-                pos.w = true;
+                pos.w = false;  // init particle state to false.
                 vel.w = 0.0;
                 
                 particle_loc.push_back(pos);
@@ -437,8 +437,10 @@ namespace advect {
         const int tetID = d_tetIDs[particleID];
 
         // stop advection
-        if (tetID < 0 && p.w) { return; }
-        if (tetID < 0) { p.w = false; }
+        if (tetID < 0 && p.w) { 
+            p.w = false;
+            return; 
+        }
 
         //Constant velocity, First-order Euler Integration
         vec4d& vel = d_vels[particleID];
@@ -723,7 +725,7 @@ namespace advect {
                 //    disp.x, disp.y, disp.z);
         }
         */
-        if (!p.w) return;//particle is out of domain
+        //if (!p.w) return;//particle is out of domain
 
         
 
@@ -761,11 +763,6 @@ namespace advect {
         cudaCheck(cudaDeviceSynchronize());
     }
 
-
-
-    
-
-
     //-------------------------Debug-----------------------
 
     __global__
@@ -785,10 +782,10 @@ namespace advect {
         int gridDims = divRoundUp(numParticles, blockDims);
 
         int NumBadParticles = thrust::count_if(thrust::device, dev_ptr, dev_ptr + numParticles, negative<int>());
-        printf("#adv: Out-of-domain particles(-tetID) = %d\n", NumBadParticles);
-        if (NumBadParticles > 0) {
-            reportParticles << <gridDims, blockDims >> > (d_tetIDs, numParticles, -1);
-            cudaCheck(cudaDeviceSynchronize());
-        }
+        printf("#adv: Out-of-domain particles(-tetID) = %d, total num particles = %d\n", NumBadParticles, numParticles);
+        //if (NumBadParticles > 0) {
+        //    reportParticles << <gridDims, blockDims >> > (d_tetIDs, numParticles, -1);
+        //    cudaCheck(cudaDeviceSynchronize());
+        //}
     }
 }

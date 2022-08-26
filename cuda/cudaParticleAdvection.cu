@@ -36,10 +36,11 @@ namespace advect {
 	int testTetMeshGridSize = 45;
 	//int numSteps = 550001;
 	//int numSteps = 13251;
-	int numSteps = 1e5;
+	int numSteps = 1024;
+	double dt = 0.01;
 	//double dt = 1.5e-3; //Microfludics Level 1
 	//double dt = 3.5e-3; //Microfludics Level 2
-	double dt = 5.0e-3; //Microfludics Level 3
+	//double dt = 5.0e-1; //Microfludics Level 3
 	//double dt = 6.0e-3; //Microfludics Level 4
 	//double dt = 2e-4; //porous media, Sphere Packing
 
@@ -54,14 +55,14 @@ namespace advect {
 
 	//Physics controller
 	bool usingAdvection = true;
-	bool usingBrownianMotion = true;
-	bool reflectWall = true;
+	bool usingBrownianMotion = false;
+	bool reflectWall = false;
 	bool floatErrorCorrection = true;
 
 	//IO container
 	bool usingSeedingBox = false;
 	bool saveStreamlinetoFile = false;
-	int saveInterval = numSteps;
+	int saveInterval = 100;
 	//int saveInterval = 50000;
 
   extern "C" int main(int ac, char **av)
@@ -210,6 +211,7 @@ namespace advect {
     
     printf("Init RunTime=%lf  ms\n", timer.stop());
 
+
 	//Init initial state (pos,velocity,tetID)
 #ifdef  ConvexPoly
 	RTQuery(tetQueryAccelerator, devMesh,
@@ -217,6 +219,25 @@ namespace advect {
 #else
 	RTQuery(tetQueryAccelerator, devMesh, d_particles, d_particles_tetIDs, numParticles);
 #endif
+
+
+	if (usingAdvection) {
+		// compute displacement
+		cudaAdvect(d_particles,
+#ifndef  ConvexPoly
+			d_particles_tetIDs,
+#else
+			d_particles_ConvextetIDs,
+#endif
+			d_particle_vels,
+			d_particle_disps,
+			dt,
+			numParticles,
+			devMesh.d_indices,
+			devMesh.d_positions,
+			devMesh.d_velocities,
+			VelocityInterpMethod);
+	}
 
 	writeParticles2DAT(0, d_particles, d_particles_tetIDs, numParticles,	d_particles_ConvextetIDs);
 
@@ -226,7 +247,8 @@ namespace advect {
 	cudaReportParticles(numParticles, d_particles_ConvextetIDs);
 #endif
 
-	return -1;
+
+	system("pause");
 
 	//cudaTimer timer_loop;
 	CPUTimer timer_loop;
@@ -330,6 +352,7 @@ namespace advect {
 #endif
 		moveTime += timer_loop.stop();
 
+		cudaReportParticles(numParticles, d_particles_tetIDs);
 
 #ifndef  ConvexPoly
 //		cudaReportParticles(numParticles, d_particles_tetIDs);
@@ -342,9 +365,11 @@ namespace advect {
 			if ((i % (saveInterval * 1)) == 0 || i == numSteps)
 				addToTrajectories(d_particles, numParticles, trajectories);
 
-		if ((i % saveInterval) == 0 || i == numSteps)
-			writeParticles2VTU(i + 1, d_particles, d_particle_vels, d_particles_tetIDs, numParticles,
-				d_particles_ConvextetIDs);
+		if ((i % saveInterval) == 0 || i == numSteps) {
+			writeParticles2DAT(i, d_particles, d_particles_tetIDs, numParticles, d_particles_ConvextetIDs);
+			//writeParticles2VTU(i + 1, d_particles, d_particle_vels, d_particles_tetIDs, numParticles,
+			//	d_particles_ConvextetIDs);
+		}
 		IOTime += timer_loop.stop();
 
 		if (i % 100 == 0) printf("------------End Step %d-------------\n\n", i);
@@ -385,8 +410,6 @@ namespace advect {
 			writeStreamline2VTK(vtkStreamlineFileName, trajectories);
 	}
 	
-	
-
     return 0;
   }
 
