@@ -30,15 +30,19 @@ namespace advect {
     struct SearchInfo {
         int tetID;//global tetID, 1-based index(tetID<0), 0-based index (tetID>0)
         int faceID;//global face ID
+        vec4d tetBC = (0.0, 0.0, 0.0, 0.0);
     };
 
     __device__ SearchInfo baryTetSearch(int particleID,vec3d P, int tetID_start, vec3d* d_tetVerts, vec4i* d_tetInds,
         vec4i* d_facets, vec4i* d_tetfacets, FaceInfo* d_faceinfos) {
         //Search hosting cell of point P start from tetID_start
+        SearchInfo info;
 
         int tetID_search = tetID_start;
         int faceID = -1;
         int tetID_previous = tetID_search;
+        vec4d tetBC_search = (0.0, 0.0, 0.0, 0.0);
+
         for (int i = 0; i < 50; ++i) {//Search maximum 50 times
             const vec4i index_tet = d_tetInds[tetID_search];
             const vec3d A = d_tetVerts[index_tet.x];
@@ -54,6 +58,8 @@ namespace advect {
             else {//Start to move one of its neighbors
                   //where the facet has minimum negative number has largest possibility
                 const int exitfaceID = arg_min(bary);
+                tetBC_search = bary;
+
                 faceID = d_tetfacets[tetID_search][exitfaceID];
 
                 //If facet neighbor is out of domain(ID<0), tetID_previous is the exit tet
@@ -79,11 +85,12 @@ namespace advect {
                     break;
                 }
                 //Case3. start to next loop of search
+
+                info.tetBC = vec4d(bary.x, bary.y, bary.z, bary.w);
             }
 
         }
 
-        SearchInfo info;
         info.tetID = tetID_search;
         info.faceID = faceID;
         return info;
@@ -187,9 +194,10 @@ namespace advect {
 
     //Point-wise barycentric searching (initial valid tetID (>=0) should be provided by RTX locator)
     __global__ void baryQuery(Particle* d_particles,
-        int* d_tetIDs, int numParticles,
+        int* d_tetIDs, vec4d* d_tetBCs, int numParticles,
         vec3d* d_tetVerts, vec4i* d_tetInds,
-        vec4i* d_facets, vec4i* d_tetfacets, FaceInfo* d_faceinfos
+        vec4i* d_facets, vec4i* d_tetfacets, 
+        FaceInfo* d_faceinfos
     )
     {
         int particleID = threadIdx.x + blockDim.x * blockIdx.x;
@@ -207,14 +215,15 @@ namespace advect {
         //Also we can access the tetID in previous timestep (useful for particle exit the domain)
 
         int tetID_init = d_tetIDs[particleID];
-        SearchInfo info = baryTetSearch(particleID,P, tetID_init, d_tetVerts, d_tetInds,
+        SearchInfo info = baryTetSearch(particleID, P, tetID_init, d_tetVerts, d_tetInds,
             d_facets, d_tetfacets, d_faceinfos);
-        int tetID_search = info.tetID;
+        int tetID_search = info.tetID;          
 
         //if (tetID_search != tetID_init)
         //    printf("Particle%d RTX TetID is not correct! %d->%d\n", particleID, tetID_init, tetID_search);
 
         d_tetIDs[particleID] = tetID_search;
+        d_tetBCs[particleID] = vec4d(info.tetBC.x, info.tetBC.y, info.tetBC.z, info.tetBC.w);
     }
 
     //Displacement mode searching (initial tetID from last timestep)
@@ -291,7 +300,7 @@ namespace advect {
     }
 
 
-	void RTQuery(OptixQuery& cellLocator, DeviceTetMesh devMesh, double4* d_particles, int* out_tetIDs, int numParticles)
+	void RTQuery(OptixQuery& cellLocator, DeviceTetMesh devMesh, double4* d_particles, int* out_tetIDs, vec4d* out_tetBCs, int numParticles)
 	{
         int blockDims = 128;
         int gridDims = divRoundUp(numParticles, blockDims);
@@ -302,7 +311,7 @@ namespace advect {
 
 		//Narrow-phase barycentric location
         baryQuery << <gridDims, blockDims >> > (d_particles,
-            out_tetIDs, numParticles,
+            out_tetIDs, out_tetBCs, numParticles,
             devMesh.d_positions, devMesh.d_indices,
             devMesh.d_facets, devMesh.d_tetfacets, devMesh.d_faceinfos);
         cudaCheck(cudaDeviceSynchronize());
@@ -310,7 +319,7 @@ namespace advect {
 
 
 	void RTQuery(OptixQuery& cellLocator, DeviceTetMesh devMesh, 
-		double4* d_particles, vec4d* d_disps, int* out_tetIDs, int numParticles)
+		double4* d_particles, vec4d* d_disps, int* out_tetIDs, vec4d* out_tetBCs, int numParticles)
 	{
         int blockDims = 128;
         int gridDims = divRoundUp(numParticles, blockDims);
@@ -437,13 +446,16 @@ namespace advect {
         thrust::device_vector<int> tetIDs(numParticles, -1);
         int* d_tetIDs = thrust::raw_pointer_cast(tetIDs.data());
 
+        thrust::device_vector<vec4d> tetBCs(numParticles, vec4d(0.0, 0.0, 0.0, 0.0));
+        vec4d* d_tetBCs = thrust::raw_pointer_cast(tetBCs.data());
+
         //Get the initial cell location
         cellLocator.query_sync(d_particles, d_tetIDs, numParticles);
         cudaCheck(cudaDeviceSynchronize());
 
         //Narrow-phase barycentric location
         baryQuery << <gridDims, blockDims >> > (d_particles,
-            d_tetIDs, numParticles,
+            d_tetIDs, d_tetBCs, numParticles,
             devMesh.d_positions, devMesh.d_indices,
             devMesh.d_facets, devMesh.d_tetfacets, devMesh.d_faceinfos);
         cudaCheck(cudaDeviceSynchronize());

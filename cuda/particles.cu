@@ -444,7 +444,7 @@ namespace advect {
 
         //Constant velocity, First-order Euler Integration
         vec4d& vel = d_vels[particleID];
-        d_disp[particleID] = vec4d(vel.x*dt, vel.y * dt, vel.z * dt, -1.0);
+        d_disp[particleID] = vec4d(vel.x * dt, vel.y * dt, vel.z * dt, -1.0);
     }
 
     // [Velocity] Tet velocity interpolation
@@ -766,26 +766,27 @@ namespace advect {
     //-------------------------Debug-----------------------
 
     __global__
-        void reportParticles(int* tetIDs, int numParticles, int TagID) {
+        void reportParticles(int* tetIDs, vec4d* tetBCs, int numParticles, int TagID) {
         int particleID = threadIdx.x + blockDim.x * blockIdx.x;
         if (particleID >= numParticles) return;
 
         if (tetIDs[particleID] <= TagID) 
-            printf("--Particle [%d] TagID=%d\n", particleID, tetIDs[particleID]);
+            printf("--Particle [%d] TagID=%d BaryCoord=(%.4f, %.4f, %.4f, %.4f)\n", 
+                particleID, tetIDs[particleID], tetBCs[particleID].x, tetBCs[particleID].y, tetBCs[particleID].z, tetBCs[particleID].w);
     }
 
     //[Host] Check particle status based on tetID
-    void advect::cudaReportParticles(int numParticles, int* d_tetIDs) {
+    void advect::cudaReportParticles(int numParticles, int* d_tetIDs, vec4d* d_tetBCs) {
         thrust::device_ptr<int> dev_ptr = thrust::device_pointer_cast(d_tetIDs);
 
         int blockDims = 128;
         int gridDims = divRoundUp(numParticles, blockDims);
 
         int NumBadParticles = thrust::count_if(thrust::device, dev_ptr, dev_ptr + numParticles, negative<int>());
-        printf("#adv: Out-of-domain particles(-tetID) = %d, total num particles = %d\n", NumBadParticles, numParticles);
-        //if (NumBadParticles > 0) {
-        //    reportParticles << <gridDims, blockDims >> > (d_tetIDs, numParticles, -1);
-        //    cudaCheck(cudaDeviceSynchronize());
-        //}
+        printf("#adv: particles missed (-tetID) = %d, hit = %d, total = %d\n", NumBadParticles, numParticles-NumBadParticles, numParticles);
+        /*if (NumBadParticles > 0) {
+            reportParticles << <gridDims, blockDims >> > (d_tetIDs, numParticles, -1);
+            cudaCheck(cudaDeviceSynchronize());
+        }*/
     }
 }

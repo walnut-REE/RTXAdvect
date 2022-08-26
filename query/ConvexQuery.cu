@@ -520,13 +520,14 @@ namespace advect {
         thrust::device_vector<vec4d> vels(numParticles, vec4d(0.1, -0.1, 0.01, 0.0));
         vec4d* d_vels = thrust::raw_pointer_cast(vels.data());
 
-        int* d_tetIDs = thrust::raw_pointer_cast(tetIDs.data());
+        thrust::device_vector<vec4d> tetBCs(numParticles, vec4d(0.0, 0.0, 0.0, 0.0));
+        vec4d* d_tetBCs = thrust::raw_pointer_cast(tetBCs.data());
 
+        int* d_tetIDs = thrust::raw_pointer_cast(tetIDs.data());
 
         //Get the initial cell location
         //cellLocator.query_sync(d_particles, d_tetIDs, numParticles);
-        RTQuery(cellLocator, devMesh,
-            d_particles, d_tetIDs, numParticles);
+        RTQuery(cellLocator, devMesh, d_particles, d_tetIDs, d_tetBCs, numParticles);
 
         //Some movement to obtain the disp
         printTet << <gridDims, blockDims >> > (d_particles, d_disps,

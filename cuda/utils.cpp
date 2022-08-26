@@ -97,6 +97,7 @@ namespace advect {
         Particle* d_particles,
         int* d_tetIDs,
         int numParticles,
+        vec4d* d_tetBCs,
         int* d_tetIDs_Convex)
     {
         //Move data from GPU
@@ -114,28 +115,44 @@ namespace advect {
             numParticles * sizeof(int),
             cudaMemcpyDeviceToHost));
 
+        std::vector<vec4d> h_tetBCs;
+        if (d_tetBCs != nullptr) {
+            h_tetBCs.reserve(numParticles);
+            cudaCheck(cudaMemcpy(h_tetBCs.data(),
+                d_tetBCs,
+                numParticles * sizeof(vec4d),
+                cudaMemcpyDeviceToHost));
+        }
+
         //Output particle into VTU file
         int i;
         FILE* fp;
         char fileName[1024];
 
-        sprintf(fileName, "particle_%04d.vtu", ti);
+        sprintf(fileName, "particle_%04d.dat", ti);
         if (ti % 500 == 0) printf("#adv: Write particles to file %s...\n", fileName);
 
         fp = fopen(fileName, "w");
         
         for (i = 0; i < numParticles; i++) {
-            fprintf(fp, "%.15lf %.15lf %.15lf %d\n",
-                hostParticles[i].x,
-                hostParticles[i].y,
-                hostParticles[i].z,
-                h_tetIDs[i]);
+
+            if (d_tetBCs != nullptr) {
+                fprintf(fp, "%.15lf %.15lf %.15lf %d %.15lf %.15lf %.15lf %.15lf\n",
+                    hostParticles[i].x, hostParticles[i].y, hostParticles[i].z, h_tetIDs[i],
+                    std::isnan(h_tetBCs[i].x) ? -1.0 : h_tetBCs[i].x,
+                    std::isnan(h_tetBCs[i].y) ? -1.0 : h_tetBCs[i].y, 
+                    std::isnan(h_tetBCs[i].z) ? -1.0 : h_tetBCs[i].z, 
+                    std::isnan(h_tetBCs[i].w) ? -1.0 : h_tetBCs[i].w);
+            }
+            else
+            {
+                fprintf(fp, "%.15lf %.15lf %.15lf %d\n",
+                    hostParticles[i].x, hostParticles[i].y, hostParticles[i].z, h_tetIDs[i]);
+            }
+
             if (i % (int)(numParticles/10) == 0)
                 printf("Timestep %d pID %d %.15lf %.15lf %.15lf, tID %d\n",ti-1, i,
-                    hostParticles[i].x,
-                    hostParticles[i].y,
-                    hostParticles[i].z,
-                    h_tetIDs[i]);
+                    hostParticles[i].x, hostParticles[i].y, hostParticles[i].z, h_tetIDs[i]);
         }
         
         fclose(fp);

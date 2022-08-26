@@ -180,6 +180,10 @@ namespace advect {
 	cudaCheck(cudaMalloc(&d_particles_ConvextetIDs, numParticles * sizeof(int)));
 	cudaCheck(cudaMemset(d_particles_ConvextetIDs, -1, numParticles * sizeof(int)));
 
+	vec4d* d_particles_tetBCs = nullptr;
+	cudaCheck(cudaMalloc(&d_particles_tetBCs, numParticles * sizeof(vec4d)));
+	cudaCheck(cudaMemset(d_particles_tetBCs, 0.0, numParticles * sizeof(vec4d)));
+	
 	vec4d* d_particle_vels =nullptr;
 	cudaCheck(cudaMalloc(&d_particle_vels, numParticles * sizeof(vec4d)));
 	cudaCheck(cudaMemset(d_particle_vels, 0.0, numParticles * sizeof(vec4d)));
@@ -187,10 +191,6 @@ namespace advect {
 	vec4d* d_particle_disps = nullptr;
 	cudaCheck(cudaMalloc(&d_particle_disps, numParticles * sizeof(vec4d)));
 	cudaCheck(cudaMemset(d_particle_disps, 0.0, numParticles * sizeof(vec4d)));
-
-	curandState_t* rand_states = nullptr;;
-	cudaCheck(cudaMalloc(&rand_states, numParticles * sizeof(curandState_t)));
-	initRandomGenerator(numParticles, rand_states);
 
 	size_t bytes = numParticles * sizeof(Particle)
 		+ numParticles * sizeof(int)
@@ -217,7 +217,7 @@ namespace advect {
 	RTQuery(tetQueryAccelerator, devMesh,
 		d_particles, d_particles_ConvextetIDs, numParticles);
 #else
-	RTQuery(tetQueryAccelerator, devMesh, d_particles, d_particles_tetIDs, numParticles);
+	RTQuery(tetQueryAccelerator, devMesh, d_particles, d_particles_tetIDs, d_particles_tetBCs, numParticles);
 #endif
 
 
@@ -239,10 +239,10 @@ namespace advect {
 			VelocityInterpMethod);
 	}
 
-	writeParticles2DAT(0, d_particles, d_particles_tetIDs, numParticles,	d_particles_ConvextetIDs);
+	writeParticles2DAT(0, d_particles, d_particles_tetIDs, numParticles, d_particles_tetBCs, d_particles_ConvextetIDs);
 
 #ifndef  ConvexPoly
-	cudaReportParticles(numParticles, d_particles_tetIDs);
+	cudaReportParticles(numParticles, d_particles_tetIDs, d_particles_tetBCs);
 #else
 	cudaReportParticles(numParticles, d_particles_ConvextetIDs);
 #endif
@@ -296,7 +296,7 @@ namespace advect {
 
 		timer_loop.start();
 		///*
-		RTQuery(devMesh,d_particles,d_particle_disps,d_particles_tetIDs,numParticles);
+		RTQuery(devMesh, d_particles ,d_particle_disps, d_particles_tetIDs, numParticles);
 
 		//RTQuery(tetQueryAccelerator, devMesh,d_particles,d_particle_disps,d_particles_tetIDs,numParticles);
 		queryTime += timer_loop.stop();
@@ -352,7 +352,7 @@ namespace advect {
 #endif
 		moveTime += timer_loop.stop();
 
-		cudaReportParticles(numParticles, d_particles_tetIDs);
+		cudaReportParticles(numParticles, d_particles_tetIDs, d_particles_tetBCs);
 
 #ifndef  ConvexPoly
 //		cudaReportParticles(numParticles, d_particles_tetIDs);
@@ -366,7 +366,7 @@ namespace advect {
 				addToTrajectories(d_particles, numParticles, trajectories);
 
 		if ((i % saveInterval) == 0 || i == numSteps) {
-			writeParticles2DAT(i, d_particles, d_particles_tetIDs, numParticles, d_particles_ConvextetIDs);
+			writeParticles2DAT(i, d_particles, d_particles_tetIDs, numParticles, d_particles_tetBCs, d_particles_ConvextetIDs);
 			//writeParticles2VTU(i + 1, d_particles, d_particle_vels, d_particles_tetIDs, numParticles,
 			//	d_particles_ConvextetIDs);
 		}
@@ -379,7 +379,7 @@ namespace advect {
     std::cout << "done ... ignoring proper cleanup for now" << std::endl;
 
 #ifndef  ConvexPoly
-	cudaReportParticles(numParticles, d_particles_tetIDs);
+	cudaReportParticles(numParticles, d_particles_tetIDs, d_particles_tetBCs);
 #else
 	cudaReportParticles(numParticles, d_particles_ConvextetIDs);
 #endif

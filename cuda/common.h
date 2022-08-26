@@ -76,7 +76,7 @@ namespace advect {
 	void cudaMoveParticles(Particle* d_particles, vec4d* d_disps,
 		int numParticles, int* d_tetIDs);
 
-	void cudaReportParticles(int numParticles, int* d_tetIDs);
+	void cudaReportParticles(int numParticles, int* d_tetIDs, vec4d* d_tetBCs);
 	//
 	//  I/O routines
 	//
@@ -96,6 +96,7 @@ namespace advect {
 		Particle* d_particles,
 		int* d_tetIDs,
 		int numParticles,
+		vec4d* d_tetBCs = nullptr,
 		int* d_tetIDs_Convex = nullptr);
 }
 

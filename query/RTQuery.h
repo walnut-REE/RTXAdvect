@@ -35,6 +35,7 @@ namespace advect {
 		OptixQuery& cellLocator, DeviceTetMesh devMesh,
 		double4* d_particles,
 		int* out_tetIDs,
+		vec4d* out_tetBCs,
 		int numParticles);
 
 	//Displacment-based query
@@ -51,7 +52,9 @@ namespace advect {
 		double4* d_particles,
 		vec4d* d_disps,
 		int* out_tetIDs,
+		vec4d* out_tetBCs,
 		int numParticles);
+
 
 	//Wall reflection
 	void RTWallReflect(
