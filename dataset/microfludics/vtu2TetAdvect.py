@@ -2,7 +2,8 @@ import numpy as np
 import pyvista as pv
 
 #Cell-wise solution from GCRS
-mesh = pv.read(r'solution_5.vtu')
+# mesh = pv.read(r'solution_5.vtu')
+mesh = meshio.read('solution_5.vtu')
 
 head_line= "NumTetVerts= %d\nx y z" %(mesh.n_points)
 np.savetxt("verts.dat", mesh.points,header=head_line, delimiter=" ", fmt="%s",comments="")

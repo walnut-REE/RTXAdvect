@@ -32,6 +32,11 @@ IF (NOT TBB_ROOT_PATH STREQUAL TBB_ROOT_PATH_LAST)
   UNSET(TBB_LIBRARY_MALLOC_DEBUG CACHE)
 ENDIF()
 
+SET(TBB_LIBDIR ${TBB_ROOT_PATH}/lib)
+SET(TBB_INCLUDE_DIR ${TBB_ROOT_PATH}/include/oneapi)
+
+MESSAGE("Find TBB: ${TBB_ROOT_PATH}, ${TBB_LIBDIR}, ${TBB_INCLUDE_DIR}")
+
 IF (WIN32)
   # workaround for parentheses in variable name / CMP0053
   SET(PROGRAMFILESx86 "PROGRAMFILES(x86)")
@@ -59,8 +64,6 @@ IF (WIN32)
     SET(TBB_ARCH ia32)
   ENDIF()
 
-  SET(TBB_LIBDIR ${TBB_ROOT_PATH}/lib)
-
   FIND_PATH(TBB_INCLUDE_DIR tbb/task_scheduler_init.h PATHS ${TBB_ROOT_PATH}/include NO_DEFAULT_PATH)
   SET(TBB_LIB_HINTS
     PATHS
@@ -75,7 +78,7 @@ IF (WIN32)
 
 ELSE ()
 
-  FIND_PATH(TBB_ROOT_PATH include/tbb/task_scheduler_init.h
+  FIND_PATH(TBB_INCLUDE_DIR tbb/task_scheduler_init.h
     DOC "Root of TBB installation"
     HINTS ${TBB_ROOT_PATH}
     PATHS
@@ -117,7 +120,15 @@ FIND_PACKAGE_HANDLE_STANDARD_ARGS(TBB
 
 # check version
 IF (TBB_INCLUDE_DIR)
-  FILE(READ ${TBB_INCLUDE_DIR}/tbb/tbb_stddef.h TBB_STDDEF_H)
+  #  FILE(READ ${TBB_INCLUDE_DIR}/tbb/tbb_stddef.h TBB_STDDEF_H) issue
+  
+  # (iw): issue #68: should use tbb/version.h, not tbb/tbb_stddef.h, to make
+  # newest intel beta software happy.
+  if (EXISTS ${TBB_INCLUDE_DIR}/tbb/version.h)
+    FILE(READ ${TBB_INCLUDE_DIR}/tbb/version.h TBB_STDDEF_H)
+  else()
+    FILE(READ ${TBB_INCLUDE_DIR}/tbb/tbb_stddef.h TBB_STDDEF_H) 
+  endif()
 
   STRING(REGEX MATCH "#define TBB_VERSION_MAJOR ([0-9]+)" DUMMY "${TBB_STDDEF_H}")
   SET(TBB_VERSION_MAJOR ${CMAKE_MATCH_1})
@@ -125,15 +136,16 @@ IF (TBB_INCLUDE_DIR)
   STRING(REGEX MATCH "#define TBB_VERSION_MINOR ([0-9]+)" DUMMY "${TBB_STDDEF_H}")
   SET(TBB_VERSION "${TBB_VERSION_MAJOR}.${CMAKE_MATCH_1}")
 
+  SET(TBB_FOUND TRUE)
+
   IF (TBB_VERSION VERSION_LESS TBB_VERSION_REQUIRED)
-    MESSAGE(WARNING ${TBB_ERROR_MESSAGE})
+    MESSAGE(WARNING "TBB version ${TBB_VERSION} less than required ${TBB_VERSION_REQUIRED}. ${TBB_ERROR_MESSAGE}")
     SET(TBB_FOUND FALSE)
   ENDIF()
 
   SET(TBB_VERSION ${TBB_VERSION} CACHE STRING "TBB Version")
   MARK_AS_ADVANCED(TBB_VERSION)
 ENDIF()
-
 IF (TBB_FOUND)
   SET(TBB_INCLUDE_DIRS ${TBB_INCLUDE_DIR})
   # NOTE(jda) - TBB found in CentOS 6/7 package manager does not have debug

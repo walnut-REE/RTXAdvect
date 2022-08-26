@@ -36,6 +36,8 @@ namespace advect {
 	void cudaInitParticles(Particle* d_particles, int N,
 		std::string fileName);
 
+	void cudaInitParticlesWithVel(Particle* d_particles, vec4d* d_vels, int N, std::string fileName);
+
 	double cudaEvalTimestep(int NumTets,
 		vec4i* d_tetIndices,
 		vec3d* d_vertexPositions,
@@ -90,11 +92,11 @@ namespace advect {
 		int numParticles,
 		int* d_tetIDs_Convex = nullptr);
 
-
-
-	
-	
-
+	void writeParticles2DAT(unsigned int ti,
+		Particle* d_particles,
+		int* d_tetIDs,
+		int numParticles,
+		int* d_tetIDs_Convex = nullptr);
 }
 
 #endif

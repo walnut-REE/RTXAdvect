@@ -138,7 +138,7 @@ namespace advect {
         if (vfile.is_open()) {
             vfile >> word >> numParticles;//Header Line
             printf("%s %d\n", word.c_str(), numParticles);
-            vfile >> word >> word >> word >>word;//Comment line, x,y,z,tetID
+            vfile >> word >> word >> word >> word;//Comment line, x,y,z,tetID
 
             for (int i = 0; i < N; ++i) {
                 Particle pos;
@@ -156,6 +156,55 @@ namespace advect {
         cudaCheck(cudaMemcpy(d_particles,
             particle_loc.data(),
             N * sizeof(particle_loc[0]),
+            cudaMemcpyHostToDevice));
+        cudaCheck(cudaDeviceSynchronize());
+    }
+
+    void advect::cudaInitParticlesWithVel(Particle* d_particles, vec4d* d_vel, int N, std::string fileName)
+    {
+        //Read particles
+        std::string word;
+        int numParticles = 0;
+
+        std::vector<Particle> particle_loc;
+        particle_loc.reserve(N);
+
+        std::vector<vec4d> vel_loc;
+        vel_loc.reserve(N);
+
+        std::ifstream vfile(fileName);
+        if (vfile.is_open()) {
+            vfile >> word >> numParticles;//Header Line
+            printf("%s %d\n", word.c_str(), numParticles);
+            vfile >> word >> word >> word >> word >> word >> word; // Comment line, x,y,z,dx,dy,dz
+
+            for (int i = 0; i < N; ++i) {
+                Particle pos;
+                vec4d vel;
+
+                vfile >> pos.x >> pos.y >> pos.z >> vel.x >> vel.y >> vel.z;
+                pos.w = true;
+                vel.w = 0.0;
+                
+                particle_loc.push_back(pos);
+                vel_loc.push_back(vel);
+
+                if (i < 5)
+                    std::cout << "Seeding Pos" << i << " " << vec4d(particle_loc[i].x, particle_loc[i].y, particle_loc[i].z, particle_loc[i].w) << std::endl;
+            }
+            vfile.close();
+        }
+
+        //Upload to GPU
+        cudaCheck(cudaMemcpy(d_particles,
+            particle_loc.data(),
+            N * sizeof(particle_loc[0]),
+            cudaMemcpyHostToDevice));
+        cudaCheck(cudaDeviceSynchronize());
+
+        cudaCheck(cudaMemcpy(d_vel,
+            vel_loc.data(),
+            N * sizeof(vel_loc[0]),
             cudaMemcpyHostToDevice));
         cudaCheck(cudaDeviceSynchronize());
     }
@@ -376,23 +425,20 @@ namespace advect {
     //[Device] Constant initial velocity interpolation
     __global__
         void particleAdvectConstVel(Particle* d_particles,
-            int* d_tetIDs,
-            vec4d* d_vels,
-            vec4d* d_disp,
-            double dt,
-            int       numParticles) {
+            int*    d_tetIDs,
+            vec4d*  d_vels,
+            vec4d*  d_disp,
+            double  dt,
+            int     numParticles) {
         int particleID = threadIdx.x + blockDim.x * blockIdx.x;
         if (particleID >= numParticles) return;
 
         Particle& p = d_particles[particleID];
-        if (!p.w) return;
-
         const int tetID = d_tetIDs[particleID];
-        if (tetID < 0) {//tet=-1
-            // this particle left the domain
-            p.w = false;
-            return;
-        }
+
+        // stop advection
+        if (tetID < 0 && p.w) { return; }
+        if (tetID < 0) { p.w = false; }
 
         //Constant velocity, First-order Euler Integration
         vec4d& vel = d_vels[particleID];
@@ -745,7 +791,4 @@ namespace advect {
             cudaCheck(cudaDeviceSynchronize());
         }
     }
-
-    
-
 }

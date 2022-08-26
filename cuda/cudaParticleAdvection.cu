@@ -74,12 +74,9 @@ namespace advect {
 	std::string vert_filename, tet_filename, velocity_vert_filename,velocity_tet_filename;
 	std::string seeding_pts_filename;
 
-	seeding_pts_filename = "SeedingPts.dat";
-	seeding_pts_filename = "";
-	vert_filename = "verts.dat";
-	tet_filename = "cells.dat";
-	velocity_tet_filename = "solutions_cell.dat";
-
+	seeding_pts_filename = "../dataset/spot/rayinfo.dat";
+	vert_filename = "../dataset/spot/verts.dat";
+	tet_filename = "../dataset/spot/cells.dat";
 
 	std::string objTrajectoryFileName;
 	std::string vtkStreamlineFileName = "Streamline.vtk";
@@ -121,23 +118,10 @@ namespace advect {
     // ------------------------------------------------------------------
     // create a host-side model
     // ------------------------------------------------------------------
-	std::string VelocityInterpMethod = "VertexVelocity";
+	std::string VelocityInterpMethod = "ConstantVelocity";
 	HostTetMesh hostTetMesh;
-	if (velocity_vert_filename.size() > 0) {
-		hostTetMesh = HostTetMesh::readDataSet(vert_filename, tet_filename, velocity_vert_filename);
-		VelocityInterpMethod = "VertexVelocity";
-		printf("#adv: load vertex velocity field from file %s\n", velocity_vert_filename.c_str());
-	}
-	else if (velocity_tet_filename.size() > 0) {
-		hostTetMesh = HostTetMesh::readDataSet(vert_filename, tet_filename, "", velocity_tet_filename);
-		VelocityInterpMethod = "TetVelocity";
-		printf("#adv: load tet velocity field from file %s\n", velocity_vert_filename.c_str());
-	}
-	else {
-		hostTetMesh = HostTetMesh::createBoxMesh(testTetMeshGridSize, testTetMeshGridSize, testTetMeshGridSize);
-		VelocityInterpMethod = "VertexVelocity";
-		printf("#adv: using synthetic velocity field\n");
-	}
+	hostTetMesh = HostTetMesh::readDataSet(vert_filename, tet_filename);
+
 	//Get the boundary mesh representation
 	HostTetMesh hostBoundaryMesh = hostTetMesh.getBoundaryMesh();
 
@@ -163,15 +147,6 @@ namespace advect {
 	printf("#adv BVH Construction Time=%lf  ms\n", BVHTime);
 
 
-    // by now optix should have built all its data,and released
-    // whatever temp memory it has used.
-	/*
-	OptixQuery triQueryAccelerator((double3*)hostBoundaryMesh.positions.data(),
-									hostBoundaryMesh.positions.size(),
-									(int4*)hostBoundaryMesh.indices.data(),
-									hostBoundaryMesh.indices.size(), true);
-	*/
-
     // ------------------------------------------------------------------
     // upload our own cuda data
     // ------------------------------------------------------------------
@@ -184,19 +159,13 @@ namespace advect {
     // ------------------------------------------------------------------
     // now run sample advection...
     // ------------------------------------------------------------------
-	if(!fixTimestep)
-	double dt=cudaEvalTimestep(hostTetMesh.indices.size(),
-		devMesh.d_indices,
-		devMesh.d_positions,
-		devMesh.d_velocities,
-		VelocityInterpMethod);
 
     // alloc particles and its properties
 	std::cout << "NumParticles=" << numParticles << std::endl;
 	std::cout << "Timestep=" << dt << std::endl;
 
 	// Cast simple double4 particles into OptixTetquery type
-	Particle* d_particles = nullptr;//x,y,z,statusID
+	Particle* d_particles = nullptr;
 	if (seeding_pts_filename.size() > 0) 
 		numParticles = loadNumParticles(seeding_pts_filename);
 	cudaCheck(cudaMalloc(&d_particles, numParticles * sizeof(Particle)));
@@ -210,13 +179,13 @@ namespace advect {
 	cudaCheck(cudaMalloc(&d_particles_ConvextetIDs, numParticles * sizeof(int)));
 	cudaCheck(cudaMemset(d_particles_ConvextetIDs, -1, numParticles * sizeof(int)));
 
-	vec4d* d_particle_disps = nullptr;//x,y,z,tetID_last
-	cudaCheck(cudaMalloc(&d_particle_disps, numParticles * sizeof(vec4d)));
-	cudaCheck(cudaMemset(d_particle_disps, 0.0, numParticles * sizeof(vec4d)));
-
-	vec4d* d_particle_vels =nullptr;//vx,vy,vz
+	vec4d* d_particle_vels =nullptr;
 	cudaCheck(cudaMalloc(&d_particle_vels, numParticles * sizeof(vec4d)));
 	cudaCheck(cudaMemset(d_particle_vels, 0.0, numParticles * sizeof(vec4d)));
+	
+	vec4d* d_particle_disps = nullptr;
+	cudaCheck(cudaMalloc(&d_particle_disps, numParticles * sizeof(vec4d)));
+	cudaCheck(cudaMemset(d_particle_disps, 0.0, numParticles * sizeof(vec4d)));
 
 	curandState_t* rand_states = nullptr;;
 	cudaCheck(cudaMalloc(&rand_states, numParticles * sizeof(curandState_t)));
@@ -235,36 +204,8 @@ namespace advect {
 
 	// Create streamlines object
 	std::vector<std::vector<vec3f>> trajectories;
-
-
-	usingSeedingBox = true;
-	//double seedBox[6] = { -0.05+tol,0.0+tol,2.5+tol, 0.05-tol,0.1-tol,2.55-tol };
-	//double seedBox[6] = { -0.05 + tol,0.0 + tol,2.2165 + tol, 0.05 - tol,0.1 - tol,2.7835 - tol }; //Square Duct
-	double seedBox[6] = { 73.9 + tol,-0.4 + tol,-655.95 + tol, 77.7 - tol,0.0 - tol,-655.45 - tol }; //Microfludics
-	//double seedBox[6] = { 6.5 + tol,6.5 + tol,-20 + tol, 91.5 - tol, 91.5 - tol,-16 - tol };//Sphere packing
-	//double seedBox[6] = { 167.25 + tol,178.9 + tol,-63.4 + tol, 176.75 - tol, 188.7 - tol,-58.6 - tol };//Human lung
-	std::copy(seedBox, seedBox+6, SeedingBox);
-
-
-    // initialize with random particles
-	if (seeding_pts_filename.size() == 0) {
-		box3d initBox;
-		if (usingSeedingBox) {
-			initBox.extend(vec3d(SeedingBox[0], SeedingBox[1], SeedingBox[2]));
-			initBox.extend(vec3d(SeedingBox[3], SeedingBox[4], SeedingBox[5]));
-		}
-		else {
-			initBox = hostTetMesh.worldBounds;
-		}
-		//std::cout << "Particle seeding bounding box = " << initBox.lower << " " << initBox.upper << std::endl;
-		printf("Particle Bounding Box (%lf,%lf,%lf)-(%lf,%lf,%lf)\n",
-			initBox.lower.x, initBox.lower.y, initBox.lower.z,
-			initBox.size().x, initBox.size().y, initBox.size().z);
-		cudaInitParticles(d_particles, numParticles, initBox);
-	}
-	else 
-		cudaInitParticles(d_particles, numParticles, seeding_pts_filename);
-
+  
+	cudaInitParticlesWithVel(d_particles, d_particle_vels, numParticles, seeding_pts_filename);
     cudaCheck(cudaDeviceSynchronize());
     
     printf("Init RunTime=%lf  ms\n", timer.stop());
@@ -274,10 +215,10 @@ namespace advect {
 	RTQuery(tetQueryAccelerator, devMesh,
 		d_particles, d_particles_ConvextetIDs, numParticles);
 #else
-	RTQuery(tetQueryAccelerator, devMesh,
-		d_particles, d_particles_tetIDs, numParticles);
+	RTQuery(tetQueryAccelerator, devMesh, d_particles, d_particles_tetIDs, numParticles);
 #endif
 
+	writeParticles2DAT(0, d_particles, d_particles_tetIDs, numParticles,	d_particles_ConvextetIDs);
 
 #ifndef  ConvexPoly
 	cudaReportParticles(numParticles, d_particles_tetIDs);
@@ -285,41 +226,7 @@ namespace advect {
 	cudaReportParticles(numParticles, d_particles_ConvextetIDs);
 #endif
 
-	if (usingAdvection) {
-	
-	cudaAdvect(d_particles,
-#ifndef  ConvexPoly
-		d_particles_tetIDs,
-#else
-		d_particles_ConvextetIDs,
-#endif
-		d_particle_vels,
-		d_particle_disps,
-		dt,
-		numParticles,
-		devMesh.d_indices,
-		devMesh.d_positions,
-		devMesh.d_velocities,
-		VelocityInterpMethod);
-	/*
-	cudaTubeAdvect(d_particles, d_particles_tetIDs,
-		           d_particle_vels, d_particle_disps, dt, numParticles);
-	*/
-	}
-	
-	writeParticles2VTU(0, d_particles, d_particle_vels, d_particles_tetIDs, numParticles,
-		d_particles_ConvextetIDs);
-
-#ifndef  ConvexPoly
-	//testRT(tetQueryAccelerator, devMesh);
-#else
-	//testNStracing(tetQueryAccelerator, devMesh);
-#endif
-
-	system("pause");
-
-	//VelocityInterpMethod = "ConstantVelocity";
-	//VelocityInterpMethod = "VertexVelocity";
+	return -1;
 
 	//cudaTimer timer_loop;
 	CPUTimer timer_loop;
@@ -362,17 +269,6 @@ namespace advect {
 			*/
 		}
 		advectionTime+= timer_loop.stop();
-
-		// ... compute random Brownian motion
-		timer_loop.start();
-		if(usingBrownianMotion)
-		cudaBrownianMotion(d_particles, 
-			d_particle_disps,
-			rand_states,
-			dt, 
-			numParticles);
-		diffusionTime += timer_loop.stop();
-
 
 #ifndef  ConvexPoly
 

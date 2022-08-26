@@ -66,5 +66,4 @@ namespace advect {
 	//  Debug routines
 	//
 	void testRT(OptixQuery& cellLocator, DeviceTetMesh devMesh);
-
 }

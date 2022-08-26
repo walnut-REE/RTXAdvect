@@ -291,7 +291,6 @@ namespace advect {
     }
 
 
-
 	void RTQuery(OptixQuery& cellLocator, DeviceTetMesh devMesh, double4* d_particles, int* out_tetIDs, int numParticles)
 	{
         int blockDims = 128;
@@ -456,6 +455,4 @@ namespace advect {
         cudaCheck(cudaDeviceSynchronize());
 
     }
-
-
 }

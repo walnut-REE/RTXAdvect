@@ -93,6 +93,55 @@ namespace advect {
 		out.close();
 	}
 
+    void writeParticles2DAT(unsigned int ti,
+        Particle* d_particles,
+        int* d_tetIDs,
+        int numParticles,
+        int* d_tetIDs_Convex)
+    {
+        //Move data from GPU
+        cudaDeviceSynchronize();
+
+        std::vector<Particle> hostParticles(numParticles);
+        cudaCheck(cudaMemcpy(hostParticles.data(),
+            d_particles,
+            numParticles * sizeof(Particle),
+            cudaMemcpyDeviceToHost));
+
+        std::vector<int> h_tetIDs(numParticles);
+        cudaCheck(cudaMemcpy(h_tetIDs.data(),
+            d_tetIDs,
+            numParticles * sizeof(int),
+            cudaMemcpyDeviceToHost));
+
+        //Output particle into VTU file
+        int i;
+        FILE* fp;
+        char fileName[1024];
+
+        sprintf(fileName, "particle_%04d.vtu", ti);
+        if (ti % 500 == 0) printf("#adv: Write particles to file %s...\n", fileName);
+
+        fp = fopen(fileName, "w");
+        
+        for (i = 0; i < numParticles; i++) {
+            fprintf(fp, "%.15lf %.15lf %.15lf %d\n",
+                hostParticles[i].x,
+                hostParticles[i].y,
+                hostParticles[i].z,
+                h_tetIDs[i]);
+            if (i % (int)(numParticles/10) == 0)
+                printf("Timestep %d pID %d %.15lf %.15lf %.15lf, tID %d\n",ti-1, i,
+                    hostParticles[i].x,
+                    hostParticles[i].y,
+                    hostParticles[i].z,
+                    h_tetIDs[i]);
+        }
+        
+        fclose(fp);
+    }
+    
+    
     void writeParticles2VTU(unsigned int ti,
         Particle* d_particles,
         vec4d* d_vels,

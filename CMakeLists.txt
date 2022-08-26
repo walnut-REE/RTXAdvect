@@ -14,10 +14,28 @@
 # limitations under the License.                                           #
 # ======================================================================== #
 
+cmake_policy(SET CMP0104 NEW)
 cmake_policy(SET CMP0048 NEW)
-project(Optix VERSION 0.0.1)
 
-cmake_minimum_required(VERSION 2.8)
+project(cudaParticleAdvection
+  VERSION 0.0.1
+	DESCRIPTION "cuda Particle Advection with hardware accelerated tet query"
+	LANGUAGES C CXX CUDA
+)
+
+cmake_minimum_required(VERSION 3.12)
+
+# ------------------------------------------------------------------
+# set dependencies (TBB, Optix and CUDA compiler)
+# ------------------------------------------------------------------
+
+set(OptiX_INSTALL_DIR "c:/ProgramData/NVIDIA Corporation/OptiX SDK 7.0.0")
+set(OptiX_INCLUDE "${OptiX_INSTALL_DIR}/include")
+set(TBB_ROOT_PATH "E:/libs/oneapi-tbb-2021.5.0")
+
+if (WIN32)
+  set(CUDA_HOST_COMPILER "C:/Program Files/Microsoft Visual Studio/2022/Professional/VC/Tools/MSVC/14.32.31326/bin/Hostx64/x64/cl.exe")
+endif()
 
 # ------------------------------------------------------------------
 # first, include gdt project to do some general configuration stuff
